@@ -57,6 +57,36 @@ Developed by **stark**
 *   GitHub: [stark](https://github.com/stark)
 *   Portfolio: [stark.dev](https://urstark.is-a.dev)
 
+## Web Dashboard & Configuration
+
+To control what is displayed on your Telegram profile, you can open the **Web Dashboard** by navigating to `http://127.0.0.1:5000` while the bot is running.
+
+From the Dashboard, you can:
+1. **Change your Status**: Set your status to Online, AFK, DND, or Sleeping.
+2. **Set a Custom About text**: Provide a funny one-liner that sits below your status.
+3. **Configure your Whitelist**: Edit the internal `config.json` via a text editor directly on the webpage!
+
+### Dynamic JSON Configuration
+You can control exactly how each app and website appears. Since we do not use a database, everything is saved neatly to `config.json`. 
+
+You can map any app or domain name to a custom string. For websites, you can use the `{title}` variable to dynamically insert the page's title (the bot automatically cleans up suffixes like " - YouTube" or " - GitHub"):
+
+```json
+{
+    "apps": {
+        "codium": "Cooking inside VSCodium 🍳"
+    },
+    "websites": {
+        "youtube.com": "Watching: {title} 🍿",
+        "github.com": "Exploring GitHub: {title} 👀"
+    },
+    "browsers": ["chrome", "brave", "firefox"],
+    "default_website": "Doomscrolling the web 📱"
+}
+```
+
+*Tip: The web dashboard automatically lists all of your recently used apps and websites so you know exactly what names to use in your config!*
+
 ## License
 
 This project is open-source and available under the [GNU General Public License (GPL)](LICENSE).

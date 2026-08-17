@@ -21,34 +21,40 @@ def build_message_text(state_manager):
     about = s["custom_about"]
     
     status_emoji = {
-        "Online": "🟢",
-        "AFK": "🟡",
-        "DND": "🔴",
-        "Sleeping": "😴"
-    }.get(manual, "🟢")
+        "Online": "✨",
+        "AFK": "☕",
+        "DND": "🔕",
+        "Sleeping": "💤"
+    }.get(manual, "✨")
     
     lines = []
-    lines.append(f"<b>{status_emoji} Live Status: {manual}</b>")
+    lines.append(f"# {status_emoji} Status: {manual}")
     if about:
-        lines.append(f"<i>{about}</i>")
-        
+        lines.append(f"*{about}*")
     lines.append("")
-    if manual == "Sleeping" or not activity:
-        lines.append("💤 <i>No active tasks right now...</i>")
+        
+    lines.append("| Current Activity | Elapsed |")
+    lines.append("|---|---|")
+    
+    if manual == "Sleeping":
+        lines.append("| 💤 *I am currently sleeping* | - |")
+    elif not activity:
+        lines.append("| 💤 *No active tasks...* | - |")
     else:
         elapsed = state_manager.get_elapsed_str(start)
-        lines.append(f"🔹 <b>{activity}</b>")
-        lines.append(f"⏱ <i>{elapsed}</i>")
+        safe_activity = activity.replace("|", "/")
+        lines.append(f"| 👻 {safe_activity} | ⏱ {elapsed} |")
         
     lines.append("")
-    lines.append("<b>[►] Last 7 Days Activity Summary</b>")
-    lines.append("<pre>")
-    lines.append("Date       | Activity")
-    lines.append("-----------|-------------------")
+    lines.append("<details>")
+    lines.append("<summary>👀 Last 7 Days Activity Summary</summary>")
+    lines.append("")
+    lines.append("| Date | Activity | Duration |")
+    lines.append("|---|---|---|")
     
     # Add history
     if not s["history"]:
-        lines.append("No recent history...")
+        lines.append("| | No recent history... | |")
     else:
         added = 0
         for item in s["history"]:
@@ -61,13 +67,17 @@ def build_message_text(state_manager):
             m = int(item["duration"] // 60)
             dur = f"{m}m" if m < 60 else f"{m//60}h {m%60}m"
             
-            act_str = item["activity"][:15] + ("." if len(item["activity"]) > 15 else "")
+            act_str = item["activity"][:20] + ("." if len(item["activity"]) > 20 else "")
+            # escape pipes for markdown tables
+            act_str = act_str.replace("|", "/")
             
-            lines.append(f"{day_str:<10} | {act_str} ({dur})")
+            lines.append(f"| {day_str} | {act_str} | {dur} |")
             added += 1
             if added >= 10: # Only show last 10 in the message to keep it clean
                 break
-    lines.append("</pre>")
+    
+    lines.append("")
+    lines.append("</details>")
     
     return "\n".join(lines)
 
@@ -81,10 +91,9 @@ def update_telegram_message(state_manager):
     
     if not MESSAGE_ID or MESSAGE_ID == "0" or MESSAGE_ID == "":
         # Send new message
-        resp = requests.post(f"{BASE_URL}/sendMessage", json={
+        resp = requests.post(f"{BASE_URL}/sendRichMessage", json={
             "chat_id": CHANNEL_ID,
-            "text": text,
-            "parse_mode": "HTML",
+            "rich_message": {"markdown": text},
             "disable_notification": True
         })
         if resp.status_code == 200:
@@ -92,29 +101,34 @@ def update_telegram_message(state_manager):
             MESSAGE_ID = str(msg_id)
             # Update .env (naive replace)
             try:
+                import re
                 with open(".env", "r") as f:
                     env_data = f.read()
-                env_data = env_data.replace("TELEGRAM_MESSAGE_ID=0", f"TELEGRAM_MESSAGE_ID={msg_id}")
+                env_data = re.sub(r"TELEGRAM_MESSAGE_ID=.*", f"TELEGRAM_MESSAGE_ID={msg_id}", env_data)
                 with open(".env", "w") as f:
                     f.write(env_data)
             except:
                 pass
-            print(f"Created new message with ID {msg_id}")
+            print(f"Created new rich message with ID {msg_id}")
         else:
-            print(f"Telegram error: {resp.text}")
+            print(f"Telegram sendRichMessage error: {resp.text}")
     else:
         # Edit existing message
         resp = requests.post(f"{BASE_URL}/editMessageText", json={
             "chat_id": CHANNEL_ID,
             "message_id": int(MESSAGE_ID),
-            "text": text,
-            "parse_mode": "HTML"
+            "rich_message": {"markdown": text}
         })
         if resp.status_code != 200:
             err_text = resp.text
-            print(f"Telegram edit error: {err_text}")
-            if "message to edit not found" in err_text or "message is not modified" not in err_text and resp.status_code == 400:
-                if "message to edit not found" in err_text:
-                    print("Message was deleted. Auto-healing by sending a new message...")
-                    MESSAGE_ID = "0"
-                    update_telegram_message(state_manager)
+            if "message is not modified" in err_text:
+                print("Message content unchanged. Telegram skipped the edit.")
+            else:
+                print(f"Telegram edit error: {err_text}")
+                
+            if "message to edit not found" in err_text:
+                print("Message was deleted. Auto-healing by sending a new message...")
+                MESSAGE_ID = "0"
+                update_telegram_message(state_manager)
+        else:
+            print(f"Successfully edited rich message ID {MESSAGE_ID}")
