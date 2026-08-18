@@ -54,8 +54,8 @@ To add or remove allowed applications, edit the `WHITELIST` dictionary inside `a
 ## Developer
 
 Developed by **stark**
-*   GitHub: [stark](https://github.com/stark)
-*   Portfolio: [stark.dev](https://urstark.is-a.dev)
+*   GitHub: [urstark](https://github.com/urstark)
+*   Portfolio: [urstark.is-a.dev](https://urstark.is-a.dev)
 
 ## Web Dashboard & Configuration
 
