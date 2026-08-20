@@ -69,10 +69,24 @@ From the Dashboard, you can:
 ### Dynamic JSON Configuration
 You can control exactly how each app and website appears. Since we do not use a database, everything is saved neatly to `config.json`. 
 
-You can map any app or domain name to a custom string. For websites, you can use the `{title}` variable to dynamically insert the page's title (the bot automatically cleans up suffixes like " - YouTube" or " - GitHub"):
+You can either group apps and websites into **Categories** that share a single display string, or you can provide specific overrides for individual apps or websites! (Specific overrides take priority over categories).
+
+For websites, you can use the `{title}` variable to dynamically insert the page's title (the bot automatically cleans up suffixes like " - YouTube" or " - GitHub"):
 
 ```json
 {
+    "categories": {
+        "Study 📚": {
+            "display": "Deep in Study 📖",
+            "apps": ["obsidian"],
+            "websites": ["pw.live", "pwthor"]
+        },
+        "Socials 💬": {
+            "display": "Scrolling Socials 📱",
+            "apps": ["discord", "telegram", "ayugram"],
+            "websites": ["instagram.com", "snapchat.com", "twitter.com"]
+        }
+    },
     "apps": {
         "codium": "Cooking inside VSCodium 🍳"
     },
