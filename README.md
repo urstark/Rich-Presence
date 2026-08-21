@@ -22,7 +22,7 @@ A completely local, privacy-first Python script that syncs your local PC activit
 ## Installation
 
 1. Clone this repository to your local machine.
-2. Create a virtual environment and install the dependencies:
+2. Create a virtual environment: and install the dependencies:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
