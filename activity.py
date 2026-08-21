@@ -115,14 +115,14 @@ def fetch_aw():
                 if events and events[0]["data"].get("status") == "afk":
                     is_afk = True
 
-        activity_str = None
+        acts = []
         
         # 1. Check Window
         if window_bucket:
             events_resp = requests.get(f"{AW_API}/{window_bucket}/events?limit=1", timeout=1)
             if events_resp.status_code == 200:
                 events = events_resp.json()
-            if events and not is_event_stale(events[0], max_age=180):
+                if events and not is_event_stale(events[0], max_age=180):
                     app_name = events[0]["data"].get("app", "").lower()
                     title = events[0]["data"].get("title", "")
                     
@@ -131,9 +131,9 @@ def fetch_aw():
                     is_browser = any(b in app_name for b in config.get("browsers", ["chrome", "brave", "firefox", "edge", "opera"]))
                     
                     if is_browser:
-                        # Let's query web bucket for better URL info
-                        activity_str = parse_chrome_tab(web_bucket)
+                        acts.extend(parse_chrome_tabs(web_bucket))
                     else:
+                        activity_str = None
                         # 1. Check direct app overrides
                         for key, value in config.get("apps", {}).items():
                             if key in app_name:
@@ -146,73 +146,77 @@ def fetch_aw():
                                 if any(a in app_name for a in cat_data.get("apps", [])):
                                     activity_str = cat_data.get("display")
                                     break
+                                    
+                        if activity_str:
+                            acts.append(activity_str)
                             
-        return activity_str, is_afk
+        return acts, is_afk
     except Exception as e:
         print(f"AW error: {e}")
         return None, False
 
-def parse_chrome_tab(web_bucket):
+def parse_chrome_tabs(web_bucket):
     config = load_config()
     default_str = config.get("default_website", "Doomscrolling the web 📱")
+    acts = []
     if not web_bucket:
-        return default_str
+        return [default_str]
     try:
-        events_resp = requests.get(f"{AW_API}/{web_bucket}/events?limit=1", timeout=1)
+        events_resp = requests.get(f"{AW_API}/{web_bucket}/events?limit=5", timeout=1)
         if events_resp.status_code == 200:
             events = events_resp.json()
-            if events and not is_event_stale(events[0], max_age=180):
-                url = events[0]["data"].get("url", "")
-                title = events[0]["data"].get("title", "")
+            for e in events:
+                if is_event_stale(e, max_age=300):
+                    continue
+                url = e["data"].get("url", "")
+                title = e["data"].get("title", "")
                 
-                # Cleanup common browser suffixes from title
                 suffixes = [" - YouTube", " - Google Chrome", " - Mozilla Firefox", " - Brave", " - Vivaldi", " - Opera", " - GitHub"]
                 clean_title = title
                 for s in suffixes:
                     if clean_title.endswith(s):
                         clean_title = clean_title[:-len(s)]
-                # Strip notification counts like (42) 
+                        
                 import re
                 clean_title = re.sub(r'^\(\d+\)\s*', '', clean_title)
                 clean_title = clean_title.strip()
 
-                # 1. Handle YouTube explicitly
+                act_str = None
                 if "youtube.com" in url:
                     yt_cfg = config.get("youtube", {})
                     is_song = is_youtube_song(url, clean_title)
-                    
                     if is_song:
-                        if not yt_cfg.get("show_songs", True):
-                            return default_str
-                        act_str = yt_cfg.get("song_status", "Listening: {title} 🎵")
+                        if yt_cfg.get("show_songs", True):
+                            act_str = yt_cfg.get("song_status", "Listening: {title} 🎵")
                     else:
-                        if not yt_cfg.get("show_videos", True):
-                            return default_str
-                        act_str = yt_cfg.get("video_status", "Watching: {title} 🍿")
-                        
-                    if "{title}" in act_str:
-                        return act_str.replace("{title}", clean_title)
-                    return act_str
-
-                # 2. Check direct website overrides
-                for domain, act_str in config.get("websites", {}).items():
-                    if domain in url:
-                        if "{title}" in act_str:
-                            return act_str.replace("{title}", clean_title)
-                        return act_str
-                        
-                # 2. Check categories
-                for cat_name, cat_data in config.get("categories", {}).items():
-                    if any(domain in url for domain in cat_data.get("websites", [])):
-                        act_str = cat_data.get("display")
-                        if "{title}" in act_str:
-                            return act_str.replace("{title}", clean_title)
-                        return act_str
-                        
-                return default_str
-    except:
-        pass
-    return default_str
+                        if yt_cfg.get("show_videos", True):
+                            act_str = yt_cfg.get("video_status", "Watching: {title} 🍿")
+                
+                if not act_str:
+                    for domain, cfg_str in config.get("websites", {}).items():
+                        if domain in url:
+                            act_str = cfg_str
+                            break
+                            
+                if not act_str:
+                    for cat_name, cat_data in config.get("categories", {}).items():
+                        if any(domain in url for domain in cat_data.get("websites", [])):
+                            act_str = cat_data.get("display")
+                            break
+                            
+                if not act_str:
+                    act_str = default_str
+                    
+                if "{title}" in act_str:
+                    act_str = act_str.replace("{title}", clean_title)
+                    
+                if act_str not in acts:
+                    acts.append(act_str)
+                    
+            return acts if acts else [default_str]
+    except Exception as e:
+        print("parse_chrome_tabs error:", e)
+    return [default_str]
 
 def fetch_mpris():
     acts = []
@@ -266,9 +270,9 @@ def get_current_status(lanyard_user_id: str, external_act: str = None):
     acts.extend(lanyard_acts)
     
     # 2. Try ActivityWatch local
-    aw_act, is_afk = fetch_aw()
-    if aw_act:
-        acts.append(aw_act)
+    aw_acts, is_afk = fetch_aw()
+    if aw_acts:
+        acts.extend(aw_acts)
         
     # 3. Try Local Media (MPRIS) for background browser tabs/players
     mpris_acts = fetch_mpris()
