@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 import urllib.parse
 from dotenv import load_dotenv
 
@@ -16,8 +17,6 @@ def build_message_text(state_manager):
     
     # Header
     manual = s["manual_status"]
-    activity = s["current_activity"]
-    start = s["activity_start_time"]
     about = s["custom_about"]
     
     status_emoji = {
@@ -36,14 +35,19 @@ def build_message_text(state_manager):
     lines.append("| Current Activity | Elapsed |")
     lines.append("|---|---|")
     
+    activities = s.get("current_activities", {})
+    
     if manual == "Sleeping":
         lines.append("| 💤 *I am currently sleeping* | - |")
-    elif not activity:
+    elif not activities:
         lines.append("| 💤 *No active tasks...* | - |")
     else:
-        elapsed = state_manager.get_elapsed_str(start)
-        safe_activity = activity.replace("|", "/")
-        lines.append(f"| 👻 {safe_activity} | ⏱ {elapsed} |")
+        for act, start in activities.items():
+            elapsed = state_manager.get_elapsed_str(start)
+            safe_activity = act.replace("|", "/")
+            if len(safe_activity) > 40:
+                safe_activity = safe_activity[:37] + "..."
+            lines.append(f"| 👻 {safe_activity} | ⌛︎ {elapsed} |")
         
     lines.append("")
     lines.append("<details>")
@@ -56,24 +60,41 @@ def build_message_text(state_manager):
     if not s["history"]:
         lines.append("| | No recent history... | |")
     else:
-        added = 0
+        # Group by activity
+        grouped = {}
         for item in s["history"]:
-            # Format time
-            import datetime
-            dt = datetime.datetime.fromtimestamp(item["timestamp"])
-            day_str = dt.strftime("%m-%d")
+            act = item["activity"]
+            if act not in grouped:
+                grouped[act] = {"duration": 0, "timestamp": item["timestamp"]}
+            grouped[act]["duration"] += item["duration"]
+            if item["timestamp"] > grouped[act]["timestamp"]:
+                grouped[act]["timestamp"] = item["timestamp"]
+                
+        # Sort by most recent
+        sorted_history = sorted(grouped.items(), key=lambda x: x[1]["timestamp"], reverse=True)
+        
+        added = 0
+        now = time.time()
+        for act, data in sorted_history:
+            # Time ago string
+            diff = now - data["timestamp"]
+            if diff < 3600:
+                time_ago = f"{int(diff//60)}m ago"
+            elif diff < 86400:
+                time_ago = f"{int(diff//3600)}h ago"
+            else:
+                time_ago = f"{int(diff//86400)}d ago"
             
             # format duration
-            m = int(item["duration"] // 60)
+            m = int(data["duration"] // 60)
             dur = f"{m}m" if m < 60 else f"{m//60}h {m%60}m"
             
-            act_str = item["activity"][:20] + ("." if len(item["activity"]) > 20 else "")
-            # escape pipes for markdown tables
+            act_str = act[:30] + ("..." if len(act) > 30 else "")
             act_str = act_str.replace("|", "/")
             
-            lines.append(f"| {day_str} | {act_str} | {dur} |")
+            lines.append(f"| {time_ago} | {act_str} | {dur} |")
             added += 1
-            if added >= 10: # Only show last 10 in the message to keep it clean
+            if added >= 10:
                 break
     
     lines.append("")
@@ -87,6 +108,9 @@ def update_telegram_message(state_manager):
         
     text = build_message_text(state_manager)
     
+    if text == state_manager.state.get("last_telegram_text"):
+        return # Skip if identical
+        
     global MESSAGE_ID
     
     if not MESSAGE_ID or MESSAGE_ID == "0" or MESSAGE_ID == "":
@@ -99,6 +123,7 @@ def update_telegram_message(state_manager):
         if resp.status_code == 200:
             msg_id = resp.json()["result"]["message_id"]
             MESSAGE_ID = str(msg_id)
+            state_manager.state["last_telegram_text"] = text
             # Update .env (naive replace)
             try:
                 import re
@@ -122,7 +147,7 @@ def update_telegram_message(state_manager):
         if resp.status_code != 200:
             err_text = resp.text
             if "message is not modified" in err_text:
-                print("Message content unchanged. Telegram skipped the edit.")
+                state_manager.state["last_telegram_text"] = text
             else:
                 print(f"Telegram edit error: {err_text}")
                 
@@ -131,4 +156,5 @@ def update_telegram_message(state_manager):
                 MESSAGE_ID = "0"
                 update_telegram_message(state_manager)
         else:
+            state_manager.state["last_telegram_text"] = text
             print(f"Successfully edited rich message ID {MESSAGE_ID}")

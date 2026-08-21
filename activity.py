@@ -2,6 +2,7 @@ import requests
 import urllib.parse
 from datetime import datetime, timezone
 import re
+import subprocess
 
 from config import load_config
 
@@ -51,7 +52,8 @@ def is_youtube_song(url: str, title: str) -> bool:
         
     # Fast heuristic first
     lower_title = title.lower()
-    if any(x in lower_title for x in ["official music video", "official video", "official audio", "lyrics", "music video"]):
+    song_keywords = ["official music video", "official video", "official audio", "lyrics", "music video", "mashup", "lofi", "cover", "mix", "remix", "song", "album"]
+    if any(x in lower_title for x in song_keywords):
         CURRENT_YT_IS_SONG = True
         return True
         
@@ -60,7 +62,7 @@ def is_youtube_song(url: str, title: str) -> bool:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         resp = requests.get(url, headers=headers, timeout=2)
         if resp.status_code == 200:
-            match = re.search(r'"category":"([^"]+)"', resp.text)
+            match = re.search(r'itemprop="genre" content="([^"]+)"', resp.text)
             if match and match.group(1) == "Music":
                 CURRENT_YT_IS_SONG = True
                 return True
@@ -169,6 +171,9 @@ def parse_chrome_tab(web_bucket):
                 for s in suffixes:
                     if clean_title.endswith(s):
                         clean_title = clean_title[:-len(s)]
+                # Strip notification counts like (42) 
+                import re
+                clean_title = re.sub(r'^\(\d+\)\s*', '', clean_title)
                 clean_title = clean_title.strip()
 
                 # 1. Handle YouTube explicitly
@@ -209,9 +214,52 @@ def parse_chrome_tab(web_bucket):
         pass
     return default_str
 
-def get_current_status(lanyard_user_id: str):
-    """Returns (Activity String, is_afk)"""
+def fetch_mpris():
     acts = []
+    try:
+        # Get all mpris players
+        out = subprocess.getoutput("busctl --user list | grep org.mpris.MediaPlayer2 || true")
+        for line in out.splitlines():
+            parts = line.split()
+            if not parts or not parts[0].startswith("org.mpris.MediaPlayer2."):
+                continue
+                
+            player = parts[0]
+            # Check playback status
+            status = subprocess.getoutput(f"busctl --user get-property {player} /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player PlaybackStatus 2>/dev/null || true")
+            if "Playing" not in status:
+                continue
+                
+            # Get metadata
+            meta = subprocess.getoutput(f"busctl --user get-property {player} /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player Metadata 2>/dev/null || true")
+            
+            title = ""
+            title_match = re.search(r'"xesam:title"\s+(?:v\s+)?s\s+"([^"]+)"', meta)
+            if title_match:
+                title = title_match.group(1)
+                
+            artist = ""
+            artist_match = re.search(r'"xesam:artist"\s+(?:v\s+)?as\s+1\s+"([^"]+)"', meta)
+            if artist_match:
+                artist = artist_match.group(1)
+                
+            if title:
+                if artist:
+                    acts.append(f"🎵 Listening: {title} by {artist}")
+                else:
+                    acts.append(f"🎵 Listening: {title}")
+    except Exception as e:
+        print(f"MPRIS error: {e}")
+        
+    return acts
+
+def get_current_status(lanyard_user_id: str, external_act: str = None):
+    """Returns (List[Activity String], is_afk)"""
+    acts = []
+    
+    # 0. Try External Activity
+    if external_act:
+        acts.append(external_act)
     
     # 1. Try Discord/Lanyard first
     lanyard_acts = fetch_lanyard(lanyard_user_id)
@@ -221,8 +269,43 @@ def get_current_status(lanyard_user_id: str):
     aw_act, is_afk = fetch_aw()
     if aw_act:
         acts.append(aw_act)
-    
-    if acts:
-        return " | ".join(acts), is_afk
         
-    return None, is_afk
+    # 3. Try Local Media (MPRIS) for background browser tabs/players
+    mpris_acts = fetch_mpris()
+    # Deduplicate in case lanyard already caught spotify
+    for ma in mpris_acts:
+        if ma not in acts:
+            acts.append(ma)
+            
+    # Filter out empty and deduplicate
+    unique_acts = []
+    
+    # We want MPRIS to take precedence over AW if they are duplicates (MPRIS has better formatting)
+    # So let's put MPRIS acts first, then AW acts, then Lanyard.
+    # Actually `acts` currently has external, lanyard, aw, mpris. 
+    # Let's just process them in reverse so mpris is kept, or just do a smart check.
+    
+    for a in acts:
+        if not a:
+            continue
+            
+        import re
+        norm_a = re.sub(r'[^a-zA-Z0-9]', '', a.lower())
+        
+        is_dup = False
+        for i, u in enumerate(unique_acts):
+            norm_u = re.sub(r'[^a-zA-Z0-9]', '', u.lower())
+            
+            # If they are very similar (one is a substring of another)
+            if len(norm_a) > 10 and len(norm_u) > 10:
+                if norm_a in norm_u or norm_u in norm_a:
+                    is_dup = True
+                    # Prefer the MPRIS one (which usually has the 🎵 prefix) or the longer one
+                    if "🎵" in a and "🎵" not in u:
+                        unique_acts[i] = a
+                    break
+        
+        if not is_dup:
+            unique_acts.append(a)
+            
+    return unique_acts, is_afk

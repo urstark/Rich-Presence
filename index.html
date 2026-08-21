@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Rich Presence Dashboard</title>
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #121212;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        *,
+        *:before,
+        *:after {
+            box-sizing: inherit;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #222;
+            padding: 0 1.5rem;
+            height: 50px;
+            border-bottom: 1px solid #333;
+        }
+
+        .navbar h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .btn-power {
+            background: transparent;
+            color: #dc3545;
+            border: none;
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 0;
+            width: 40px;
+            height: 40px;
+        }
+
+        .btn-power:hover {
+            background: #333;
+            color: #ff4d4d;
+        }
+
+        .split {
+            height: calc(100vh - 50px);
+            width: 100vw;
+        }
+
+        .pane {
+            float: left;
+            height: 100%;
+            padding: 1.5rem;
+            overflow-y: auto;
+            background: #1e1e1e;
+        }
+
+        /* Custom Scrollbar for a desktop feel */
+        ::-webkit-scrollbar {
+            width: 2px;
+            height: 2px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #121212;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+
+        /* VS Code style gutters */
+        .gutter {
+            float: left;
+            height: 100vh;
+            background-color: #2d2d2d;
+            cursor: col-resize;
+            transition: background-color 0.1s ease;
+        }
+
+        .gutter:hover,
+        .gutter:active {
+            background-color: #007bff;
+        }
+
+        h2,
+        h3,
+        h4 {
+            margin-top: 0;
+        }
+
+        input,
+        select,
+        button {
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            width: 100%;
+            box-sizing: border-box;
+            background: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        button {
+            background: #007bff;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .card {
+            background: #222;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            border: 1px solid #333;
+        }
+
+        .card ul {
+            overflow-x: auto;
+            white-space: nowrap;
+            padding-bottom: 0.5rem;
+        }
+
+        textarea {
+            width: 100%;
+            height: calc(100vh - 120px);
+            padding: 0.5rem;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: monospace;
+            font-size: 14px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            resize: none;
+            white-space: pre;
+            overflow-wrap: normal;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="navbar">
+        <h2>Rich Presence Dashboard</h2>
+        <form method="post" action="/api/shutdown"
+            onsubmit="return confirm('Are you sure you want to completely stop the Rich Presence server?');"
+            style="margin: 0;">
+            <button type="submit" class="btn-power" title="Power Off Server">⏻</button>
+        </form>
+    </div>
+    <div class="split">
+        <!-- PANE 1: Configuration -->
+        <div id="pane-config" class="pane">
+            <h3>Configuration (JSON)</h3>
+            <form method="post" action="/update_config">
+                <textarea name="config_json" spellcheck="false">{config_json}</textarea>
+                <button type="submit">Save Configuration</button>
+            </form>
+        </div>
+
+        <!-- PANE 2: Status Control -->
+        <div id="pane-status" class="pane" style="background: #181818;">
+            <h2>Control Panel</h2>
+            <div class="card">
+                <form method="post" action="/update">
+                    <label>Manual Override:</label>
+                    <select name="status">
+                        <option value="Online" {online_sel}>Online</option>
+                        <option value="AFK" {afk_sel}>AFK</option>
+                        <option value="DND" {dnd_sel}>Do Not Disturb</option>
+                        <option value="Sleeping" {sleep_sel}>Sleeping</option>
+                    </select>
+                    <br><br>
+                    <label>Custom About Text:</label>
+                    <div style="display: flex; gap: 10px; margin-top: 0.5rem; margin-bottom: 1rem;">
+                        <input type="text" id="about" name="about" value="{about_val}" style="margin: 0;">
+                        <button type="button" onclick="document.getElementById('about').value=''"
+                            style="width: auto; padding: 0 1rem; margin: 0; background: #dc3545;">Clear</button>
+                    </div>
+                    <button type="submit">Update Status</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h4 style="margin-bottom: 0.5rem; color: #888;">System Info</h4>
+                <p style="margin: 0; font-size: 0.9em; color: #aaa;">The daemon checks ActivityWatch every 30 seconds.
+                </p>
+            </div>
+        </div>
+
+        <!-- PANE 3: Activity Explorer -->
+        <div id="pane-activity" class="pane">
+            <h3>Activity Explorer</h3>
+            <p style="font-size: 0.85em; color: #aaa;">Recently tracked names from ActivityWatch.</p>
+
+            <div class="card">
+                <h4>Apps</h4>
+                <ul style="padding-left: 1.2rem; margin-bottom: 0; font-family: monospace; font-size: 0.9em;">
+                    {recent_apps}
+                </ul>
+            </div>
+
+            <div class="card">
+                <h4>Websites</h4>
+                <ul style="padding-left: 1.2rem; margin-bottom: 0; font-family: monospace; font-size: 0.9em;">
+                    {recent_sites}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let storedSizes = localStorage.getItem('split-sizes');
+        let initialSizes = storedSizes ? JSON.parse(storedSizes) : [20, 55, 25];
+
+        Split(['#pane-config', '#pane-status', '#pane-activity'], {
+            sizes: initialSizes,
+            minSize: [300, 250, 200],
+            gutterSize: 2,
+            cursor: 'col-resize',
+            onDragEnd: function (sizes) {
+                localStorage.setItem('split-sizes', JSON.stringify(sizes));
+            }
+        });
+    </script>
+</body>
+
+</html>

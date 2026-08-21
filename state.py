@@ -10,9 +10,10 @@ class StateManager:
         self.state = {
             "manual_status": "Online", # Online, AFK, DND, Sleeping
             "custom_about": "",
-            "current_activity": None, 
-            "activity_start_time": None,
+            "current_activities": {}, # map of "Activity String" -> start_time
+            "external_activity": None,
             "last_pc_active_time": time.time(),
+            "last_telegram_text": "",
             "history": [] # list of past activities
         }
         self.load_history()
@@ -25,6 +26,7 @@ class StateManager:
                     self.state["history"] = data.get("history", [])
                     self.state["manual_status"] = data.get("manual_status", "Online")
                     self.state["custom_about"] = data.get("custom_about", "")
+                    self.state["external_activity"] = data.get("external_activity", None)
             except Exception as e:
                 print(f"Failed to load history: {e}")
 
@@ -33,7 +35,8 @@ class StateManager:
             json.dump({
                 "history": self.state["history"],
                 "manual_status": self.state["manual_status"],
-                "custom_about": self.state["custom_about"]
+                "custom_about": self.state["custom_about"],
+                "external_activity": self.state["external_activity"]
             }, f)
 
     def set_manual_status(self, status: str, about: str):
@@ -41,7 +44,12 @@ class StateManager:
         self.state["custom_about"] = about
         self.save_history()
 
-    def update_activity(self, activity_text: str, is_afk: bool = False):
+    def set_external_activity(self, activity: str):
+        self.state["external_activity"] = activity if activity else None
+        self.save_history()
+
+
+    def update_activity(self, active_list: list, is_afk: bool = False):
         current_time = time.time()
         
         if not is_afk:
@@ -52,7 +60,7 @@ class StateManager:
             if self.state["manual_status"] != "Sleeping":
                 self.state["manual_status"] = "Sleeping"
                 self.save_history()
-            return "Sleeping", current_time
+            return "Sleeping"
 
         if self.state["manual_status"] == "Sleeping":
             # Woke up!
@@ -60,18 +68,26 @@ class StateManager:
                 self.state["manual_status"] = "Online"
                 self.save_history()
 
-        # If activity changed
-        if activity_text != self.state["current_activity"]:
-            if self.state["current_activity"] is not None:
-                # push old activity to history
-                duration = current_time - (self.state["activity_start_time"] or current_time)
+        # Handle diff for multiple activities
+        current_dict = self.state["current_activities"]
+        new_dict = {}
+        
+        # Add or retain activities
+        for act in active_list:
+            if act in current_dict:
+                new_dict[act] = current_dict[act]
+            else:
+                new_dict[act] = current_time
+                
+        # Find removed activities and push to history
+        for act, start_time in current_dict.items():
+            if act not in new_dict:
+                duration = current_time - start_time
                 if duration > 60: # only save if it lasted more than 1 min
-                    self.add_to_history(self.state["current_activity"], duration)
-            
-            self.state["current_activity"] = activity_text
-            self.state["activity_start_time"] = current_time
-
-        return self.state["current_activity"], self.state["activity_start_time"]
+                    self.add_to_history(act, duration)
+                    
+        self.state["current_activities"] = new_dict
+        return new_dict
 
     def add_to_history(self, activity: str, duration_sec: float):
         if not activity or activity in ["Sleeping", "AFK", "Offline"]:

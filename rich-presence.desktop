@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Name=Rich Presence
+Comment=Start Telegram Rich Presence server and open it in the browser
+Exec=/home/stark/Documents/dev/Rich-Presence/start.sh
+Icon=/home/stark/Documents/dev/Rich-Presence/icon.png
+Terminal=false
+Type=Application
+Categories=Utility;

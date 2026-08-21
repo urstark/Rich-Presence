@@ -13,7 +13,7 @@ DEFAULT_CONFIG = {
     },
     "apps": {
         "codium": "Cooking inside VSCodium 🍳",
-        "antigravity": "Cooking smth",
+        "antigravity": "Cooking smth in VSCodium 🍳",
         "waydroid": "Messing around in Waydroid 📱",
         "obsidian": "Drafting smth in Obsidian 📝",
         "discord": "Shitposting on Discord ☕",
@@ -29,7 +29,7 @@ DEFAULT_CONFIG = {
         "threads.net": "Reading Threads 📱"
     },
     "youtube": {
-        "show_videos": True,
+        "show_videos": False,
         "show_songs": True,
         "video_status": "Watching: {title} 🍿",
         "song_status": "Listening: {title} 🎵"

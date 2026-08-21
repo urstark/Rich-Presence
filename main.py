@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+# pyrefly: ignore [missing-import]
 import uvicorn
 from dotenv import load_dotenv
 
@@ -15,10 +16,11 @@ def background_loop():
     while True:
         try:
             # 1. Fetch current activity
-            act_str, is_afk = get_current_status(LANYARD_ID)
+            external_act = state_manager.state.get("external_activity")
+            act_list, is_afk = get_current_status(LANYARD_ID, external_act)
             
             # 2. Update state manager
-            state_manager.update_activity(act_str, is_afk)
+            state_manager.update_activity(act_list, is_afk)
             
             # 3. Push to Telegram
             update_telegram_message(state_manager)
@@ -26,8 +28,8 @@ def background_loop():
         except Exception as e:
             print(f"Loop error: {e}")
         
-        # Poll every 30 seconds
-        time.sleep(30)
+        # Poll every 5 seconds for near-instant updates
+        time.sleep(5)
 
 if __name__ == "__main__":
     # Start background thread
